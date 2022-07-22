@@ -5,7 +5,24 @@ mod slack;
 
 #[tokio::main]
 async fn main() -> Result<(), reqwest::Error> {
-    // Get token from env var?
+    // connect to NATS
+    let nc = nats::connect("localhost").unwrap();
+ // Using a threaded handler.
+let sub = nc.subscribe("my.subject").unwrap().with_handler(move |msg| {
+    println!("Received {}", &msg);
+    Ok(())
+});   
+
+
+    nc.publish("my.subject", "Hello World!").unwrap();
+let sub = nc.subscribe("my.subject").unwrap();
+if let Some(msg) = sub.next() {
+    println!("Got a next message");
+}
+
+    
+    // connect to slack
+    /*
     let slack_token = slack::Client::get_token_from_file("tokens/slack.token").unwrap();
     //let slack_token = config.slack.token;
     let mut slack = slack::Client::new(slack_token);
@@ -21,6 +38,7 @@ async fn main() -> Result<(), reqwest::Error> {
             Message::Close(_) => break,
         }
     }
+    */
     Ok(())
 }
 
