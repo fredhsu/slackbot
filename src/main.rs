@@ -12,7 +12,7 @@ async fn main() -> Result<(), reqwest::Error> {
     //     .subscribe("my.subject")
     //     .unwrap()
     //     .with_handler(move |msg| {
-    //         println!("Received {}", &msg);
+    //         pr&intln!("Received {}", &msg);
     //         Ok(())
     //     });
 
@@ -31,7 +31,13 @@ async fn main() -> Result<(), reqwest::Error> {
     loop {
         let msg = slack.receive_message().await.unwrap();
         match msg {
-            Message::Text(t) => handle_text(&t).await,
+            Message::Text(t) => {
+                let socket_event = slack::parse_message(&t);
+                handle_text(&t).await;
+                let response = format!("Request submitted for approval");
+                let payload = build_response_payload(&response);
+                slack.send_response(&socket_event.get_envelope_id(), payload)
+            }
             Message::Binary(_) => println!("binary"),
             Message::Ping(_p) => {}
             Message::Pong(_p) => {}
@@ -42,7 +48,10 @@ async fn main() -> Result<(), reqwest::Error> {
 }
 
 // TODO use result
-fn publish_nats(host: &str, subject: &str, message: &str) {
+fn publish_nats(host: &str, subject: &str, payload: &slack::SlashCommand) {
+    let command = &payload.get_command();
+    let text = &payload.text;
+    let message = format!("{}::{}", command, text);
     let nc = nats::connect(host).unwrap();
     nc.publish(subject, message).unwrap();
 }
@@ -61,10 +70,10 @@ async fn handle_text(message: &str) {
         }
         slack::SocketEvent::SlashCommands {
             payload,
-            envelope_id: _,
+            envelope_id,
             accepts_response_payload: _,
         } => {
-            handle_slash_command(payload).await;
+            handle_slash_command(payload, &envelope_id).await;
         }
         slack::SocketEvent::Interactive {
             payload,
@@ -105,18 +114,15 @@ async fn handle_interactive(payload: slack::Interactive) {
 
 // Matches possible slash commands
 // TODO: use an enum for commands
-async fn handle_slash_command(payload: slack::SlashCommand) {
+async fn handle_slash_command(payload: slack::SlashCommand, envelope_id: &str) {
     let command = &payload.get_command();
-    let text = &payload.text;
-    let message = format!("{}::{}", command, text);
-    publish_nats("localhost", "slackbot.command", &message);
-    /*
     match command.as_str() {
-        "addservice" => todo!(),
-        "addsubnet" => todo!(),
+        "addservice" => publish_nats("localhost", "slackbot.command", &payload),
+        "addsubnet" => publish_nats("localhost", "slackbot.command", &payload),
+        "addsegment" => publish_nats("localhost", "slackbot.command", &payload),
+        "approve" => publish_nats("localhost", "slackbot.approve", &payload),
         _ => println!("Unknown command {}", command),
     }
-    */
 }
 
 async fn add_service(payload: &str, envelope_id: &str, slack: &mut slack::Client) {
@@ -130,4 +136,10 @@ async fn add_service(payload: &str, envelope_id: &str, slack: &mut slack::Client
     let blocks = vec![block2];
     let payload = BlockPayload::new(blocks);
     slack.send_response(envelope_id, payload);
+}
+
+fn build_response_payload(text: &str) -> BlockPayload {
+    let block2 = Block::new_section(TextBlock::new_mrkdwn(text.to_string()));
+    let blocks = vec![block2];
+    BlockPayload::new(blocks)
 }

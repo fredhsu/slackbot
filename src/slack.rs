@@ -61,6 +61,27 @@ pub enum SocketEvent {
         accepts_response_payload: bool,
     },
 }
+impl SocketEvent {
+    pub fn get_envelope_id(self) -> String {
+        match self {
+            SocketEvent::EventsApi {
+                payload,
+                envelope_id,
+                accepts_response_payload,
+            } => envelope_id,
+            SocketEvent::SlashCommands {
+                payload,
+                envelope_id,
+                accepts_response_payload,
+            } => envelope_id,
+            SocketEvent::Interactive {
+                payload,
+                envelope_id,
+                accepts_response_payload,
+            } => envelope_id,
+        }
+    }
+}
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct MessagePayload {
