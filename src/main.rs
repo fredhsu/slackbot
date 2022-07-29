@@ -6,23 +6,23 @@ mod slack;
 #[tokio::main]
 async fn main() -> Result<(), reqwest::Error> {
     // connect to NATS
-    let nc = nats::connect("localhost").unwrap();
- // Using a threaded handler.
-let sub = nc.subscribe("my.subject").unwrap().with_handler(move |msg| {
-    println!("Received {}", &msg);
-    Ok(())
-});   
+    //let nc = nats::connect("localhost").unwrap();
+    // Using a threaded handler.
+    // let sub = nc
+    //     .subscribe("my.subject")
+    //     .unwrap()
+    //     .with_handler(move |msg| {
+    //         println!("Received {}", &msg);
+    //         Ok(())
+    //     });
 
+    // nc.publish("my.subject", "Hello World!").unwrap();
+    // let sub = nc.subscribe("my.subject").unwrap();
+    // if let Some(msg) = sub.next() {
+    //     println!("Got a next message");
+    // }
 
-    nc.publish("my.subject", "Hello World!").unwrap();
-let sub = nc.subscribe("my.subject").unwrap();
-if let Some(msg) = sub.next() {
-    println!("Got a next message");
-}
-
-    
     // connect to slack
-    /*
     let slack_token = slack::Client::get_token_from_file("tokens/slack.token").unwrap();
     //let slack_token = config.slack.token;
     let mut slack = slack::Client::new(slack_token);
@@ -31,19 +31,25 @@ if let Some(msg) = sub.next() {
     loop {
         let msg = slack.receive_message().await.unwrap();
         match msg {
-            Message::Text(t) => handle_text(&t, &mut slack).await,
+            Message::Text(t) => handle_text(&t).await,
             Message::Binary(_) => println!("binary"),
             Message::Ping(_p) => {}
             Message::Pong(_p) => {}
             Message::Close(_) => break,
         }
     }
-    */
     Ok(())
 }
 
+// TODO use result
+fn publish_nats(host: &str, subject: &str, message: &str) {
+    let nc = nats::connect(host).unwrap();
+    nc.publish(subject, message).unwrap();
+}
 
-async fn handle_text(message: &str, slack: &mut slack::Client) {
+// TODO use result
+async fn handle_text(message: &str) {
+    println!("Got a message {}", message);
     let socket_event = slack::parse_message(message);
     match socket_event {
         slack::SocketEvent::EventsApi {
@@ -55,10 +61,10 @@ async fn handle_text(message: &str, slack: &mut slack::Client) {
         }
         slack::SocketEvent::SlashCommands {
             payload,
-            envelope_id,
+            envelope_id: _,
             accepts_response_payload: _,
         } => {
-            handle_slash_command(slack, payload, envelope_id).await;
+            handle_slash_command(payload).await;
         }
         slack::SocketEvent::Interactive {
             payload,
@@ -99,17 +105,18 @@ async fn handle_interactive(payload: slack::Interactive) {
 
 // Matches possible slash commands
 // TODO: use an enum for commands
-async fn handle_slash_command(
-    slack: &mut slack::Client,
-    payload: slack::SlashCommand,
-    envelope_id: String,
-) {
+async fn handle_slash_command(payload: slack::SlashCommand) {
     let command = &payload.get_command();
+    let text = &payload.text;
+    let message = format!("{}::{}", command, text);
+    publish_nats("localhost", "slackbot.command", &message);
+    /*
     match command.as_str() {
         "addservice" => todo!(),
         "addsubnet" => todo!(),
         _ => println!("Unknown command {}", command),
     }
+    */
 }
 
 async fn add_service(payload: &str, envelope_id: &str, slack: &mut slack::Client) {
@@ -118,13 +125,9 @@ async fn add_service(payload: &str, envelope_id: &str, slack: &mut slack::Client
     println!("add_service: tokens: {:?}", &tokens);
     // match for the first token of payload
 
-    let resp_text = format!(
-            "Adding service {}, requesting approval",
-           "dns" 
-        );
+    let resp_text = format!("Adding service {}, requesting approval", "dns");
     let block2 = Block::new_section(TextBlock::new_mrkdwn(resp_text));
     let blocks = vec![block2];
     let payload = BlockPayload::new(blocks);
     slack.send_response(envelope_id, payload);
 }
-
