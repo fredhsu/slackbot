@@ -5,26 +5,8 @@ mod slack;
 
 #[tokio::main]
 async fn main() -> Result<(), reqwest::Error> {
-    // connect to NATS
-    //let nc = nats::connect("localhost").unwrap();
-    // Using a threaded handler.
-    // let sub = nc
-    //     .subscribe("my.subject")
-    //     .unwrap()
-    //     .with_handler(move |msg| {
-    //         pr&intln!("Received {}", &msg);
-    //         Ok(())
-    //     });
-
-    // nc.publish("my.subject", "Hello World!").unwrap();
-    // let sub = nc.subscribe("my.subject").unwrap();
-    // if let Some(msg) = sub.next() {
-    //     println!("Got a next message");
-    // }
-
     // connect to slack
     let slack_token = slack::Client::get_token_from_file("tokens/slack.token").unwrap();
-    //let slack_token = config.slack.token;
     let mut slack = slack::Client::new(slack_token);
 
     slack.connect().await.unwrap();
@@ -48,12 +30,12 @@ async fn main() -> Result<(), reqwest::Error> {
 }
 
 // TODO use result
-fn publish_nats(host: &str, subject: &str, payload: &slack::SlashCommand) {
+fn publish_nats(host: &str, subject: &str, payload: &slack::SlashCommand) -> std::io::Result<()> {
     let command = &payload.get_command();
     let text = &payload.text;
     let message = format!("{}::{}", command, text);
-    let nc = nats::connect(host).unwrap();
-    nc.publish(subject, message).unwrap();
+    let nc = nats::connect(host)?;
+    nc.publish(subject, message)
 }
 
 // TODO use result
@@ -114,14 +96,20 @@ async fn handle_interactive(payload: slack::Interactive) {
 
 // Matches possible slash commands
 // TODO: use an enum for commands
-async fn handle_slash_command(payload: slack::SlashCommand, envelope_id: &str) {
+async fn handle_slash_command(
+    payload: slack::SlashCommand,
+    envelope_id: &str,
+) -> std::io::Result<()> {
     let command = &payload.get_command();
     match command.as_str() {
         "addservice" => publish_nats("localhost", "slackbot.command", &payload),
         "addsubnet" => publish_nats("localhost", "slackbot.command", &payload),
         "addsegment" => publish_nats("localhost", "slackbot.command", &payload),
         "approve" => publish_nats("localhost", "slackbot.approve", &payload),
-        _ => println!("Unknown command {}", command),
+        _ => {
+            println!("Unknown command {}", command);
+            Ok(())
+        }
     }
 }
 
